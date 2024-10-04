@@ -1,0 +1,59 @@
+name: Manual Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      awsAccessKey:
+        description: 'AWS Academy - AWS_ACCESS_KEY_ID'
+        required: false
+        type: string
+      awsSecretAccessKey:
+        description: 'AWS Academy - AWS_SECRET_ACCESS_KEY'
+        required: false
+        type: string
+      awsSessionToken:
+        description: 'AWS Academy - AWS_SESSION_TOKEN'
+        required: false
+        type: string
+      timeoutForDestroyApproval:
+        description: 'Timeout (in minutes) for Destroy approval'
+        required: false
+        default: 60
+        type: number
+
+env:
+  TF_ACTION_WORKING_DIR: "./src/"
+  AWS_ACCESS_KEY_ID: ${{ github.event.inputs.awsAccessKey || secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ github.event.inputs.awsSecretAccessKey || secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ github.event.inputs.awsSessionToken || secrets.AWS_SESSION_TOKEN }}
+
+jobs:
+  CD:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ACTION_WORKING_DIR }}
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform apply -auto-approve
+
+      - uses: trstringer/manual-approval@v1
+        timeout-minutes: ${{ fromJSON(github.event.inputs.timeoutForDestroyApproval) }}
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: leandrocamara,mpatricio007,DaniloQueirozSilva # TODO: Add other approvers
+          minimum-approvals: 1
+          issue-title: "$ terraform destroy"
+          issue-body: "Approve to undo manual `$ terraform apply`"
+        env:
+          AWS_ACCESS_KEY_ID: ""
+          AWS_SECRET_ACCESS_KEY: ""
+          AWS_SESSION_TOKEN: ""
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
